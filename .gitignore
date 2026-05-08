@@ -1,0 +1,93 @@
+# =============================================================================
+# distributed-patterns-aws — .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Terraform / OpenTofu
+# -----------------------------------------------------------------------------
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+terraform.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Lambda zip artefacts produced by the lambda module's archive_file data source
+terraform/modules/lambda/.build/
+
+# -----------------------------------------------------------------------------
+# AWS SAM
+# -----------------------------------------------------------------------------
+.aws-sam/
+samconfig.toml
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+# Do not ignore Dockerfiles or compose files — those are source
+# Ignore any locally built image tarballs
+*.tar
+
+# -----------------------------------------------------------------------------
+# Nix
+# -----------------------------------------------------------------------------
+result
+result-*
+
+# -----------------------------------------------------------------------------
+# direnv
+# -----------------------------------------------------------------------------
+# .envrc is tracked — it contains no secrets, only `use nix` and LocalStack
+# dummy credentials that are safe to commit
+.direnv/
+
+# -----------------------------------------------------------------------------
+# LocalStack
+# -----------------------------------------------------------------------------
+# Ephemeral LocalStack state — never commit
+localstack/.filesystem/
+localstack/volume/
+
+# -----------------------------------------------------------------------------
+# OS and editor artefacts
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.iml

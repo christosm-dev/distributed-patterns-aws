@@ -1,0 +1,58 @@
+version: "3.8"
+
+# Local development compose for Project 01 — Sidecar Pattern.
+# Runs the Flask API and Fluent Bit sidecar together, wired to the
+# shared LocalStack instance on the localstack-net network.
+#
+# Usage:
+#   docker compose up --build
+#
+# Prerequisites:
+#   LocalStack must be running: cd ../../localstack && docker compose up -d
+
+services:
+  flask-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flask-api
+    ports:
+      - "5000:5000"
+    environment:
+      - LOG_DIR=/var/log/app
+      - LOG_LEVEL=INFO
+    volumes:
+      - app-logs:/var/log/app
+    networks:
+      - localstack-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  fluentbit-sidecar:
+    image: amazon/aws-for-fluent-bit:latest
+    container_name: fluentbit-sidecar
+    depends_on:
+      flask-api:
+        condition: service_healthy
+    environment:
+      - S3_BUCKET=sidecar-logs
+      - FLB_S3_ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+    volumes:
+      - app-logs:/var/log/app:ro
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+    networks:
+      - localstack-net
+
+volumes:
+  app-logs:
+
+networks:
+  localstack-net:
+    external: true
+    name: localstack-net
