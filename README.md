@@ -1,6 +1,6 @@
 # Distributed Systems Patterns on AWS
 
-A practical implementation of distributed systems design patterns using AWS services, running locally via [LocalStack](https://localstack.cloud/). Each project implements one or more patterns from *Designing Distributed Systems* by Brendan Burns, using Python, Terraform (OpenTofu), and AWS SAM.
+A practical implementation of distributed systems design patterns using AWS services, running locally via [LocalStack](https://localstack.cloud/). Each project implements one or more patterns from *Designing Distributed Systems* by Brendan Burns, using Python, Terraform, and AWS SAM.
 
 The goal is to build working, observable systems that demonstrate how classical distributed patterns translate into concrete AWS infrastructure — not toy examples, but systems with realistic failure handling, observability, and separation of concerns.
 
@@ -53,8 +53,6 @@ All six projects share a common LocalStack environment and a set of reusable Ter
 | Python >= 3.11 | Lambda handlers and tooling | [python.org](https://www.python.org/downloads/) |
 | awslocal | AWS CLI wrapper for LocalStack | `pip install awscli-local` |
 
-> **Note:** SAM CLI is installed via pip rather than Nix. The `aws-sam-cli` Nix package pulls in `sphinx-9.x` which is incompatible with Python 3.11 on nixpkgs 26.05. The `shell.nix` shellHook installs it into the project virtualenv automatically on first entry.
-
 ### NixOS / nix-direnv
 
 A `shell.nix` and `.envrc` are provided for a reproducible development environment. With `nix-direnv` configured, the environment activates automatically on `cd`:
@@ -63,7 +61,7 @@ A `shell.nix` and `.envrc` are provided for a reproducible development environme
 direnv allow  # run once after cloning
 ```
 
-This gives you OpenTofu, Python, Docker, awslocal, and SAM CLI (via virtualenv). LocalStack credentials and `AWS_ENDPOINT_URL` are exported automatically via `.envrc`.
+This gives you Python, Docker, awslocal, and SAM CLI (via virtualenv). LocalStack credentials and `AWS_ENDPOINT_URL` are exported automatically via `.envrc`.
 
 ---
 

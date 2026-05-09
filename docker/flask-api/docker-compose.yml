@@ -26,26 +26,28 @@ services:
     networks:
       - localstack-net
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
       timeout: 5s
       retries: 3
 
-  fluentbit-sidecar:
-    image: amazon/aws-for-fluent-bit:latest
-    container_name: fluentbit-sidecar
+  log-shipper:
+    build:
+      context: ../log-shipper
+      dockerfile: Dockerfile
+    container_name: log-shipper
     depends_on:
       flask-api:
         condition: service_healthy
     environment:
       - S3_BUCKET=sidecar-logs
-      - FLB_S3_ENDPOINT=http://localstack:4566
+      - S3_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
-      - AWS_DEFAULT_REGION=eu-west-1
+      - AWS_REGION=eu-west-1
+      - FLUSH_INTERVAL=30
     volumes:
       - app-logs:/var/log/app:ro
-      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
     networks:
       - localstack-net
 
