@@ -21,6 +21,11 @@ services:
     environment:
       - LOG_DIR=/var/log/app
       - LOG_LEVEL=INFO
+      - DYNAMODB_TABLE=load-balanced-counters
+      - DYNAMODB_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
     volumes:
       - app-logs:/var/log/app
     networks:

@@ -1,14 +1,11 @@
 """
-flask-api — main application container for the Sidecar pattern (Project 01).
-
-The application has no knowledge of how its logs are collected or shipped.
-It writes structured JSON to a log file and stdout. The Fluent Bit sidecar
-container handles all log forwarding to S3.
+flask-api — shared application container for Projects 01 and 03.
 
 Endpoints:
-  GET /health      — health check, returns 200 immediately
-  GET /items       — returns a list of items, generates a structured log entry
-  POST /items      — creates an item, generates a structured log entry
+  GET  /health   — health check, no dependencies, always 200
+  GET  /items    — list items (in-memory store)
+  POST /items    — create item (in-memory store)
+  POST /counter  — atomically increment a DynamoDB counter (Project 03)
 """
 
 import json
@@ -18,6 +15,8 @@ import time
 import uuid
 from datetime import datetime, timezone
 
+import boto3
+from botocore.exceptions import ClientError
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -70,6 +69,19 @@ def build_logger(name: str) -> logging.Logger:
 
 
 logger = build_logger("flask-api")
+
+# ── DynamoDB client (Project 03) ──────────────────────────────────────────
+
+DYNAMODB_TABLE   = os.environ.get("DYNAMODB_TABLE")
+DYNAMODB_ENDPOINT = os.environ.get("DYNAMODB_ENDPOINT_URL")
+
+_dynamodb = boto3.resource(
+    "dynamodb",
+    region_name=os.environ.get("AWS_DEFAULT_REGION", "eu-west-1"),
+    endpoint_url=DYNAMODB_ENDPOINT,
+    aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test"),
+)
 
 # ── In-memory store (intentionally simple for this demo) ──────────────────
 
@@ -137,6 +149,37 @@ def create_item():
         },
     )
     return jsonify(item), 201
+
+
+@app.route("/counter", methods=["POST"])
+def increment_counter():
+    if not DYNAMODB_TABLE:
+        return jsonify({"error": "DYNAMODB_TABLE not configured"}), 503
+
+    start = time.monotonic()
+    counter_id = request.get_json(silent=True, force=True) or {}
+    counter_id = counter_id.get("id", "global")
+
+    try:
+        table = _dynamodb.Table(DYNAMODB_TABLE)
+        result = table.update_item(
+            Key={"counter_id": counter_id},
+            UpdateExpression="ADD #v :inc",
+            ExpressionAttributeNames={"#v": "value"},
+            ExpressionAttributeValues={":inc": 1},
+            ReturnValues="UPDATED_NEW",
+        )
+        value = int(result["Attributes"]["value"])
+    except ClientError as exc:
+        logger.error("counter update failed", extra={"extra": {"error": str(exc)}})
+        return jsonify({"error": "counter update failed"}), 500
+
+    duration_ms = round((time.monotonic() - start) * 1000, 2)
+    logger.info(
+        "POST /counter",
+        extra={"extra": {"counter_id": counter_id, "value": value, "duration_ms": duration_ms}},
+    )
+    return jsonify({"counter_id": counter_id, "value": value})
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
