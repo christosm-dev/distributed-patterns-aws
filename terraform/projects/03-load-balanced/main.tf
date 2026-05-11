@@ -85,6 +85,28 @@ resource "aws_iam_role_policy" "dynamodb" {
   })
 }
 
+resource "aws_iam_role_policy" "cloudwatch_logs" {
+  name = "load-balanced-logs"
+  role = aws_iam_role.ecs_task_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+      Resource = "${aws_cloudwatch_log_group.flask_api.arn}:*"
+    }]
+  })
+}
+
+# ── CloudWatch log group ───────────────────────────────────────────────────
+
+resource "aws_cloudwatch_log_group" "flask_api" {
+  name              = "/aws/ecs/load-balanced-flask-api"
+  retention_in_days = 7
+  tags              = local.tags
+}
+
 # ── ECS cluster ────────────────────────────────────────────────────────────
 
 resource "aws_ecs_cluster" "main" {
@@ -116,9 +138,17 @@ resource "aws_ecs_task_definition" "flask_api" {
       { name = "AWS_SECRET_ACCESS_KEY", value = "test" },
       { name = "AWS_DEFAULT_REGION",    value = "eu-west-1" },
     ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.flask_api.name
+        "awslogs-region"        = "eu-west-1"
+        "awslogs-stream-prefix" = "flask-api"
+      }
+    }
   }])
 
-  depends_on = [null_resource.build_flask_api]
+  depends_on = [null_resource.build_flask_api, aws_cloudwatch_log_group.flask_api]
 }
 
 # ── Application Load Balancer ──────────────────────────────────────────────

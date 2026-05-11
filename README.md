@@ -213,21 +213,18 @@ flowchart LR
 ### Running
 
 ```bash
-# 1. Start MiniStack
-cd ministack && docker compose up -d
-
-# 2. Provision all resources and start the ECS service
+# Provision all resources and start the ECS service
 cd terraform/projects/01-sidecar
 terraform init && terraform apply
 
-# 3. Generate log entries (flask-api runs as an ECS task on port 5000)
+# Generate log entries (flask-api runs as an ECS task on port 5000)
 curl http://localhost:5000/health
 curl http://localhost:5000/items
 curl -X POST http://localhost:5000/items \
   -H "Content-Type: application/json" \
   -d '{"name": "test-item"}'
 
-# 4. Verify logs have landed in S3
+# Verify logs have landed in S3
 aws --endpoint-url=http://localhost:4566 s3 ls s3://sidecar-logs/ --recursive
 ```
 
@@ -277,16 +274,35 @@ flowchart LR
 ### Running
 
 ```bash
+# Provision all resources
 cd terraform/projects/02-ambassador
 terraform init && terraform apply
 
+# Invoke the producer Lambda. You may use a custom payload to match
+# the log line later on in the consumer
 aws --endpoint-url=http://localhost:4566 lambda invoke \
-  --function-name producer \
-  --payload '{}' /tmp/out.json && cat /tmp/out.json
+    --function-name producer \
+    --payload '{"body": "hello-trace-123"}' \
+    --cli-binary-format raw-in-base64-out \
+    /tmp/out.json && cat /tmp/out.json
 
+# Check the consumer logs using the payload as a filter pattern
+aws --endpoint-url=http://localhost:4566 logs filter-log-events \
+    --log-group-name /aws/lambda/consumer \
+    --filter-pattern "hello-trace-123" \
+    --query 'events[*].message' \
+    --output text
+
+# Check that the SQS queue is empty since the consumer has read
+# the message from the queue
 aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
   --queue-url http://localhost:4566/000000000000/ambassador-queue \
   --attribute-names ApproximateNumberOfMessages
+
+# Check the DLQ as well - should be empty
+aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
+    --queue-url http://localhost:4566/000000000000/ambassador-queue-dlq \
+    --attribute-names ApproximateNumberOfMessages
 ```
 
 ---
@@ -338,6 +354,7 @@ flowchart LR
 ### Running
 
 ```bash
+# Provision the resources
 cd terraform/projects/03-load-balanced
 terraform init && terraform apply
 
@@ -347,6 +364,16 @@ for i in $(seq 1 5); do
     -H "Content-Type: application/json" \
     -d '{"id": "page-views"}' | jq .value
 done
+
+# Check that dynamodb has all the entries expected
+aws --endpoint-url=http://localhost:4566 dynamodb get-item \
+    --table-name load-balanced-counters \
+    --key '{"counter_id": {"S": "page-views"}}'
+
+# An additional check can be done on the Flask replicas's logs
+# but MiniCloud doesn't forward container logs to its Cloudwatch
+# so I had to use docker logs to check that
+docker logs $(docker ps --filter "ancestor=flask-api:local" --format "{{.ID}}" | head -1)
 ```
 
 ---
@@ -402,14 +429,46 @@ flowchart LR
 ### Running
 
 ```bash
+# Provision the resources
 cd terraform/projects/04-scatter-gather
 terraform init && terraform apply
 
+# Start the step functions execution
 aws --endpoint-url=http://localhost:4566 stepfunctions start-execution \
   --state-machine-arn arn:aws:states:eu-west-1:000000000000:stateMachine:scatter-gather \
   --input '{"query": "distributed systems"}'
 
+# Check the scatter gather results folder
 aws --endpoint-url=http://localhost:4566 s3 ls s3://scatter-gather-results/ --recursive
+
+# Check the output JSON file - prints the output on the terminal
+aws --endpoint-url=http://localhost:4566 s3 cp s3://scatter-gather-results/results/xyz.json -
+
+# Check the Cloudwatch aggregator Lambda logs (optional)
+aws --endpoint-url=http://localhost:4566 logs filter-log-events \
+    --log-group-name /aws/lambda/scatter-aggregator \
+    --query 'events[*].message' \
+    --output text
+
+# Check the source Lambda logs as well (optional)
+aws --endpoint-url=http://localhost:4566 logs filter-log-events \
+    --log-group-name /aws/lambda/scatter-source-a \
+    --query 'events[*].message' \
+    --output text
+
+  aws --endpoint-url=http://localhost:4566 logs filter-log-events \
+    --log-group-name /aws/lambda/scatter-source-b \
+    --query 'events[*].message' \
+    --output text
+
+  aws --endpoint-url=http://localhost:4566 logs filter-log-events \
+    --log-group-name /aws/lambda/scatter-source-c \
+    --query 'events[*].message' \
+    --output text
+
+# Delete any dangling resources (optional)
+aws --endpoint-url=http://localhost:4566 stepfunctions delete-state-machine \
+    --state-machine-arn arn:aws:states:eu-west-1:000000000000:stateMachine:scatter-gather
 ```
 
 ---
@@ -465,14 +524,24 @@ flowchart LR
 ### Running
 
 ```bash
+# Provision the resources
 cd terraform/projects/05-event-pipeline
 terraform init && terraform apply
 
+# Get the ingest API URI from the Terraform output
+terraform output api_endpoint
+
+# Invoke the ingest API from the output of the previous command
 curl -X POST http://localhost:4566/restapis/.../prod/ingest \
   -H "Content-Type: application/json" \
   -d '{"id": "item-001", "title": "Test Item", "source": "api"}'
 
+# Check the dynamodb state
 aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name pipeline-items
+
+# Check the S3 notifications
+aws --endpoint-url=http://localhost:4566 s3 ls s3://pipeline-notifications/ --recursive
+aws --endpoint-url=http://localhost:4566 s3 cp s3://pipeline-notifications/notifications/item-xyz.json -
 ```
 
 ---
@@ -522,21 +591,28 @@ flowchart LR
 ### Running
 
 ```bash
+# Provision the environment
 cd terraform/projects/06-work-queue
 terraform init && terraform apply
 
+# Wire up networking to ministack
 docker run --network ministack-net \
-  -e AWS_ENDPOINT_URL=http://ministack:4566 \
-  -e AWS_ACCESS_KEY_ID=test \
-  -e AWS_SECRET_ACCESS_KEY=test \
-  -e QUEUE_URL=http://ministack:4566/000000000000/work-queue \
-  log-producer:local
+    -e AWS_ENDPOINT_URL=http://ministack:4566 \
+    -e AWS_ACCESS_KEY_ID=test \
+    -e AWS_SECRET_ACCESS_KEY=test \
+    -e AWS_DEFAULT_REGION=eu-west-1 \
+    -e QUEUE_URL=http://ministack:4566/000000000000/work-queue \
+    log-producer:local
 
+# Watch the messages come through
 watch -n 2 "aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
   --queue-url http://localhost:4566/000000000000/work-queue \
   --attribute-names ApproximateNumberOfMessages"
 
-aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name work-results
+# Finally, check dynamodb - should be 90 messages in total
+aws --endpoint-url=http://localhost:4566 dynamodb scan \
+    --table-name work-queue-results \
+    --select COUNT
 ```
 
 ---
@@ -549,10 +625,12 @@ Each project has a self-contained `tests/` directory. Tests run against the live
 
 ```bash
 cd terraform/projects/01-sidecar/tests
-pytest test_sidecar.py -v
+pytest -v
 ```
 
 ### Running all projects
+
+The following command can be run although a top level script has been placed in `scripts` as well for convenience.
 
 ```bash
 for project in terraform/projects/*/tests; do
