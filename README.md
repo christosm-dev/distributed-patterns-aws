@@ -338,7 +338,7 @@ Multiple identical, stateless replicas of a service run behind a load balancer. 
                   +─────────+─────────+
                   v         v         v
              +--------+ +------+ +------+
-             |Flask   | |Flask | |Flask |  ECS Fargate
+             |Flask   | |Flask | |Flask |  ECS (bridge mode)
              |Rep. 1  | |Rep.2 | |Rep.3 |
              +--------+ +------+ +------+
                   +─────────+─────────+
@@ -365,9 +365,9 @@ flowchart TD
 ### What is built
 
 - Flask API extended with a `/counter` endpoint backed by DynamoDB, demonstrating why shared state must be externalised.
-- ECS Fargate service running 3 replicas behind an ALB.
-- Application Auto Scaling between 2 and 10 replicas, targeting 60% CPU.
+- ECS service (bridge mode) running behind an Application Load Balancer on port 8080, confirmed working on MiniStack.
 - DynamoDB atomic increment (`ADD`) to prevent lost updates across concurrent replicas.
+- Application Auto Scaling (2–10 replicas, 60% CPU target) is defined in the pattern but not provisioned locally — MiniStack support is unverified.
 
 ### Key design decisions
 
@@ -378,10 +378,15 @@ flowchart TD
 ### Running
 
 ```bash
-cd docker/flask-api && docker build -t flask-api:local .
 cd terraform/projects/03-load-balanced
 terraform init && terraform apply
-for i in $(seq 1 5); do curl http://localhost:8080/counter; done
+
+# Hit the counter via the ALB on port 8080
+for i in $(seq 1 5); do
+  curl -s -X POST http://localhost:8080/counter \
+    -H "Content-Type: application/json" \
+    -d '{"id": "page-views"}' | jq .value
+done
 ```
 
 ---
@@ -641,8 +646,8 @@ aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
 ### Project 03 — Load-Balanced API
 
 ```bash
-# Trigger — increment a named counter
-curl -s -X POST http://localhost:5000/counter \
+# Trigger — increment a named counter via the ALB
+curl -s -X POST http://localhost:8080/counter \
   -H "Content-Type: application/json" \
   -d '{"id": "page-views"}' | jq .
 

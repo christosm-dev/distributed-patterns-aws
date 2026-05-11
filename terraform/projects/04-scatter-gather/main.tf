@@ -236,7 +236,7 @@ module "aggregator_lambda" {
 
 # ── Step Functions state machine ───────────────────────────────────────────
 # NOTE: The Terraform AWS provider v5.26+ calls ValidateStateMachineDefinition
-# before creating the state machine. LocalStack does not support that API, so
+# before creating the state machine. MiniStack does not support that API, so
 # we create the state machine via a null_resource local-exec instead.
 
 resource "null_resource" "scatter_gather_sfn" {
