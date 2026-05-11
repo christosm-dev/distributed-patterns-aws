@@ -167,8 +167,10 @@ distributed-patterns-aws/
 │   ├── flask-api/                  # Main API container (Projects 01, 03)
 │   │   ├── app.py
 │   │   ├── Dockerfile
-│   │   ├── docker-compose.yml      # Local dev: main + sidecar
-│   │   ├── fluent-bit.conf         # Sidecar log shipping config
+│   │   └── requirements.txt
+│   ├── log-shipper/                # Log-shipper sidecar (Project 01)
+│   │   ├── log_shipper.py
+│   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   └── log-producer/               # Batch work producer (Project 06)
 ├── docs/
@@ -236,22 +238,18 @@ flowchart TD
 # 1. Start MiniStack
 cd ministack && docker compose up -d
 
-# 2. Provision S3 bucket and ECS resources
+# 2. Provision all resources and start the ECS service
 cd terraform/projects/01-sidecar
 terraform init && terraform apply
 
-# 3. Run locally with Docker Compose
-cd docker/flask-api
-docker compose up --build
-
-# 4. Generate log entries
+# 3. Generate log entries (flask-api runs as an ECS task on port 5000)
 curl http://localhost:5000/health
 curl http://localhost:5000/items
 curl -X POST http://localhost:5000/items \
   -H "Content-Type: application/json" \
   -d '{"name": "test-item"}'
 
-# 5. Verify logs have landed in S3
+# 4. Verify logs have landed in S3
 aws --endpoint-url=http://localhost:4566 s3 ls s3://sidecar-logs/ --recursive
 ```
 
