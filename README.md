@@ -142,20 +142,26 @@ The sidecar pattern attaches a secondary process to a primary application contai
 
 The invariant is that the main application container remains unchanged regardless of which sidecar is attached. You can swap the sidecar (Fluent Bit → Logstash, for example) without touching application code.
 
-```
-+------------------------------------------+
-|              ECS Task                    |
-|                                          |
-|  +--------------+   shared volume        |
-|  |  Flask API   | ──────────────────►    |
-|  |  (main)      |   /var/log/app/app.log  |
-|  +--------------+                        |
-|                                          |
-|  +--------------+                        |
-|  |  Fluent Bit  | ─────────────────► S3  |
-|  |  (sidecar)   |   tail + ship          |
-|  +--------------+                        |
-+------------------------------------------+
+```mermaid
+flowchart LR
+    HTTP([HTTP Client]) -->|"port 5000"| Flask
+
+    subgraph ECS["ECS Task"]
+        Flask["Flask API\n(main)"]
+        Vol[("/var/log/app/app.log\nshared volume")]
+        FluentBit["Fluent Bit\n(sidecar)"]
+        Flask -->|write| Vol
+        FluentBit -->|tail| Vol
+    end
+
+    FluentBit -->|PutObject| S3[("S3\nsidecar-logs")]
+
+    classDef compute fill:#FF9900,stroke:#232F3E,color:#000,font-weight:bold
+    classDef storage fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef actor   fill:#232F3E,stroke:#FF9900,color:#FF9900
+    class Flask,FluentBit compute
+    class S3 storage
+    class HTTP actor
 ```
 
 ### Activity Diagram
@@ -218,16 +224,21 @@ The ambassador pattern places a proxy between an application and an external ser
 
 The producer has no direct dependency on SQS. Swapping the transport layer requires changes only to the ambassador Lambda, not to the producer.
 
-```
-+--------------+  invoke  +--------------+  send   +--------------+
-|   Producer   | ───────► |  Ambassador  | ──────► |  SQS Queue   |
-|   Lambda     |          |  Lambda      |         +--------------+
-+--------------+          +--------------+                |
-                                 |                  (on max retries)
-                                 | SSM                    v
-                                 +──► queue URL    +--------------+
-                                                   |     DLQ      |
-                                                   +--------------+
+```mermaid
+flowchart LR
+    LProd["λ producer"] -->|Lambda.Invoke| LAmb["λ ambassador"]
+    LAmb -. read .-> SSM[("SSM\nqueue URL")]
+    LAmb -->|SendMessage| SQS[("SQS\nambassador-queue")]
+    SQS --> LCons["λ consumer"]
+    SQS -->|max receives| DLQ[("SQS DLQ")]
+    DLQ --> CW["CloudWatch\nalarm"]
+
+    classDef compute   fill:#FF9900,stroke:#232F3E,color:#000,font-weight:bold
+    classDef messaging fill:#E7157B,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef mgmt      fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    class LProd,LAmb,LCons compute
+    class SQS,DLQ messaging
+    class SSM,CW mgmt
 ```
 
 ### Activity Diagram
@@ -284,21 +295,27 @@ aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
 
 Multiple identical, stateless replicas of a service run behind a load balancer. Each request is routed to any available replica. All state that persists across requests must live in an external store — a service holding state in memory gives inconsistent results when replicated.
 
-```
-             +-----------------------------+
-             |  Application Load Balancer  |
-             +-------------+---------------+
-                  +─────────+─────────+
-                  v         v         v
-             +--------+ +------+ +------+
-             |Flask   | |Flask | |Flask |  ECS (bridge mode)
-             |Rep. 1  | |Rep.2 | |Rep.3 |
-             +--------+ +------+ +------+
-                  +─────────+─────────+
-                            v
-                      +----------+
-                      | DynamoDB |  shared state
-                      +----------+
+```mermaid
+flowchart LR
+    HTTP([HTTP Client]) -->|":8080"| ALB["ALB"]
+
+    subgraph ECS["ECS Fargate (bridge mode)"]
+        R1["Flask Replica 1"]
+        R2["Flask Replica 2"]
+        R3["Flask Replica 3"]
+    end
+
+    ALB --> R1 & R2 & R3
+    R1 & R2 & R3 -->|"ADD atomic increment"| DDB[("DynamoDB\nload-balanced-counters\nshared state")]
+
+    classDef compute fill:#FF9900,stroke:#232F3E,color:#000,font-weight:bold
+    classDef storage fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef edge    fill:#8C4FFF,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef actor   fill:#232F3E,stroke:#FF9900,color:#FF9900
+    class R1,R2,R3 compute
+    class DDB storage
+    class ALB edge
+    class HTTP actor
 ```
 
 ### Activity Diagram
@@ -354,30 +371,29 @@ A root node receives a request and fans it out to multiple independent leaf node
 
 Total latency is determined by the slowest leaf. Timeout handling and partial result tolerance are first-class design concerns — the system must decide what to do when a leaf is slow or fails.
 
-```
-             +----------------------+
-             |   Step Functions     |
-             |   State Machine      |
-             |                      |
-             |  +----------------+  |
-             |  |   Parallel     |  |   scatter
-             |  | +-----------+  |  |
-             |  | | Source A  |  |  |
-             |  | +-----------+  |  |
-             |  | | Source B  |  |  |
-             |  | +-----------+  |  |
-             |  | | Source C  |  |  |
-             |  | +-----------+  |  |
-             |  +----------------+  |
-             |          |           |
-             |  +-------v--------+  |
-             |  |  Aggregator    |  |   gather
-             |  +----------------+  |
-             +----------+-----------+
-                        |
-                   +----v----+
-                   |   S3    |  results
-                   +---------+
+```mermaid
+flowchart LR
+    SF["Step Functions\nscatter-gather"]
+
+    subgraph Scatter["Parallel — scatter"]
+        SA["λ source-a"]
+        SB["λ source-b"]
+        SC["λ source-c"]
+    end
+
+    SF --> SA & SB & SC
+    SA --> DDBa[("DynamoDB\ntable-a")]
+    SB --> DDBb[("DynamoDB\ntable-b")]
+    SC --> DDBc[("DynamoDB\ntable-c")]
+    SA & SB & SC --> Agg["λ aggregator\n— gather —"]
+    Agg --> S3[("S3\nscatter-results")]
+
+    classDef compute fill:#FF9900,stroke:#232F3E,color:#000,font-weight:bold
+    classDef storage fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef sfn     fill:#FF4F8B,stroke:#232F3E,color:#fff,font-weight:bold
+    class SA,SB,SC,Agg compute
+    class DDBa,DDBb,DDBc,S3 storage
+    class SF sfn
 ```
 
 ### Activity Diagram
@@ -442,11 +458,28 @@ Processing stages are decoupled by queues. Each stage consumes events from its i
 
 This provides resilience (a slow downstream stage does not block upstream), independent scaling (each stage scales on its own queue depth), and replay (failed messages can be reprocessed without re-running the entire pipeline).
 
-```
-API Gateway ──► Lambda     ──► SNS Topic ──► SQS Queue A ──► Lambda (process)
-               (ingest)                 +──► SQS Queue B ──► Lambda (notify)
-                                                                   |
-                                                             DynamoDB + S3
+```mermaid
+flowchart LR
+    HTTP([HTTP Client]) -->|"POST /ingest"| APIGW["API Gateway"]
+    APIGW --> LIng["λ ingest"]
+    LIng -->|Publish| SNS[("SNS Topic")]
+    SNS -->|fan-out| QProc[("SQS\nprocessing")]
+    SNS -->|fan-out| QNot[("SQS\nnotification")]
+    QProc --> LProc["λ process"]
+    QNot --> LNot["λ notify"]
+    LProc --> DDB[("DynamoDB\npipeline-items")]
+    LNot --> S3[("S3\nnotifications")]
+
+    classDef compute   fill:#FF9900,stroke:#232F3E,color:#000,font-weight:bold
+    classDef storage   fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef messaging fill:#E7157B,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef edge      fill:#8C4FFF,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef actor     fill:#232F3E,stroke:#FF9900,color:#FF9900
+    class LIng,LProc,LNot compute
+    class DDB,S3 storage
+    class SNS,QProc,QNot messaging
+    class APIGW edge
+    class HTTP actor
 ```
 
 ### Activity Diagram
@@ -503,11 +536,22 @@ aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name pipeline-ite
 
 **Adapter:** Normalises heterogeneous worker outputs into a standard schema before persistence. The adapter manages the output contract independently of the workers — worker implementations can change without affecting downstream consumers of the normalised output.
 
-```
-ECS Producer ──► SQS Queue ──► Lambda Worker 1 ──+
-                           +──► Lambda Worker 2 ──+──► Adapter Lambda ──► DynamoDB
-                           +──► Lambda Worker 3 ──+         |
-                                                       CloudWatch Metrics
+```mermaid
+flowchart LR
+    ECSProd["ECS Task\nlog-producer"] -->|SendMessageBatch| QWork[("SQS\nwork-queue")]
+    QWork --> W1["λ worker 1"] & W2["λ worker 2"] & W3["λ worker 3"]
+    W1 & W2 & W3 -->|heterogeneous output| LAdapt["λ adapter\nnormalise schema"]
+    LAdapt --> DDB[("DynamoDB\nwork-results")]
+    LAdapt --> CW["CloudWatch\nmetrics"]
+
+    classDef compute   fill:#FF9900,stroke:#232F3E,color:#000,font-weight:bold
+    classDef storage   fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef messaging fill:#E7157B,stroke:#232F3E,color:#fff,font-weight:bold
+    classDef mgmt      fill:#7AA116,stroke:#232F3E,color:#fff,font-weight:bold
+    class ECSProd,W1,W2,W3,LAdapt compute
+    class DDB storage
+    class QWork messaging
+    class CW mgmt
 ```
 
 ### Activity Diagram
