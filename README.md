@@ -155,8 +155,6 @@ distributed-patterns-aws/
 │       ├── log_producer.py
 │       ├── Dockerfile
 │       └── requirements.txt
-├── docs/
-│   └── aws-architecture.md         # Full AWS architecture diagram (Mermaid)
 ├── scripts/
 │   ├── destroy-all.sh              # Tear down all six projects
 │   ├── status.sh                   # Show apply/destroy status per project
