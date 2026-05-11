@@ -13,6 +13,8 @@
       # Python environment with all required packages
       python = pkgs.python312.withPackages (ps: with ps; [
         boto3            # AWS SDK
+        pytest           # test runner
+        requests         # HTTP client for integration tests
       ]);
 
     in {
@@ -26,7 +28,8 @@
         ];
 
         shellHook = ''
-          echo "Start LocalStack: cd localstack && docker compose up -d"
+          echo "Starting MiniStack..."
+          docker compose -f "${toString ./.}/ministack/docker-compose.yml" up -d --wait
         '';
       };
     };
