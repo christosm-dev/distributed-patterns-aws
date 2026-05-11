@@ -3,7 +3,8 @@ import time
 import boto3
 import pytest
 
-FLASK_BASE_URL = "http://localhost:5000"
+FLASK_BASE_URL = "http://localhost:8080"   # via ALB
+FLASK_DIRECT_URL = "http://localhost:5000" # direct to container (Project 01 ECS task)
 AWS_ENDPOINT   = "http://localhost:4566"
 TABLE_NAME     = "load-balanced-counters"
 
