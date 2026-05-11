@@ -111,11 +111,37 @@ distributed-patterns-aws/
 │   │   └── lambda/                 # Lambda function + zip packaging
 │   └── projects/
 │       ├── 01-sidecar/
+│       │   ├── main.tf
+│       │   └── tests/
 │       ├── 02-ambassador/
+│       │   ├── main.tf
+│       │   ├── lambdas/
+│       │   │   ├── ambassador/handler.py
+│       │   │   ├── consumer/handler.py
+│       │   │   └── producer/handler.py
+│       │   └── tests/
 │       ├── 03-load-balanced/
+│       │   ├── main.tf
+│       │   └── tests/
 │       ├── 04-scatter-gather/
+│       │   ├── main.tf
+│       │   ├── lambdas/
+│       │   │   ├── aggregator/handler.py
+│       │   │   └── source/handler.py
+│       │   └── tests/
 │       ├── 05-event-pipeline/
+│       │   ├── main.tf
+│       │   ├── lambdas/
+│       │   │   ├── ingest/handler.py
+│       │   │   ├── notify/handler.py
+│       │   │   └── process/handler.py
+│       │   └── tests/
 │       └── 06-work-queue/
+│           ├── main.tf
+│           ├── lambdas/
+│           │   ├── adapter/handler.py
+│           │   └── worker/handler.py
+│           └── tests/
 ├── docker/
 │   ├── flask-api/                  # Main API container (Projects 01, 03)
 │   │   ├── app.py
@@ -126,10 +152,18 @@ distributed-patterns-aws/
 │   │   ├── Dockerfile
 │   │   └── requirements.txt
 │   └── log-producer/               # Batch work producer (Project 06)
+│       ├── log_producer.py
+│       ├── Dockerfile
+│       └── requirements.txt
 ├── docs/
-└── shell.nix
+│   └── aws-architecture.md         # Full AWS architecture diagram (Mermaid)
+├── scripts/
+│   ├── destroy-all.sh              # Tear down all six projects
+│   ├── status.sh                   # Show apply/destroy status per project
+│   └── test-all.sh                 # Run integration tests across all projects
+├── flake.nix
+└── flake.lock
 ```
-
 ---
 
 ## Project 01 — Sidecar Logging
