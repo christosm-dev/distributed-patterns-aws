@@ -668,31 +668,6 @@ aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
 - `boto3` clients instantiated at module level to reuse connections across warm invocations.
 - MiniStack endpoint injected via `AWS_ENDPOINT_URL` — no special casing in application code.
 
-### SAM local testing
-
-```bash
-sam local invoke FunctionName \
-  --event events/sample.json \
-  --env-vars env.json
-```
-
-`env.json` format — used by every SAM project in this repo:
-
-```json
-{
-  "FunctionName": {
-    "AWS_ENDPOINT_URL": "http://host.docker.internal:4566",
-    "AWS_ACCESS_KEY_ID": "test",
-    "AWS_SECRET_ACCESS_KEY": "test",
-    "AWS_DEFAULT_REGION": "eu-west-1"
-  }
-}
-```
-
-`host.docker.internal:4566` works on macOS, Windows, and WSL2 with Docker Desktop. On native Linux replace with `172.17.0.1:4566`.
-
----
-
 ## References
 
 - Burns, B. (2018). *Designing Distributed Systems*. O'Reilly Media.
