@@ -606,6 +606,35 @@ aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name work-results
 
 ---
 
+## Integration Tests
+
+Each project has a self-contained `tests/` directory. Tests run against the live MiniStack stack — `terraform apply` must have been executed for the relevant project before running its tests.
+
+### Running a single project
+
+```bash
+cd terraform/projects/01-sidecar/tests
+pytest test_sidecar.py -v
+```
+
+### Running all projects
+
+```bash
+for project in terraform/projects/*/tests; do
+  echo "=== $project ==="
+  pytest "$project" -v
+done
+```
+
+### Notes
+
+- Tests use `boto3` and `requests` — both provided by the Nix dev shell (`direnv allow`).
+- Project 01's S3 log-shipping test takes ~30 seconds to pass — the sidecar flushes on a 30-second interval.
+- Project 05's deduplication test includes a 5-second wait to allow async propagation.
+- All other tests complete in under 15 seconds.
+
+---
+
 ## Manual Verification
 
 A quick-reference for exercising each project and confirming the outcome via the AWS CLI. All commands assume MiniStack is running and `terraform apply` has been executed for the relevant project.
