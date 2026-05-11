@@ -91,3 +91,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.iml
+
+.claude
