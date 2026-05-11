@@ -1,6 +1,6 @@
 # Distributed Systems Patterns on AWS
 
-A practical implementation of distributed systems design patterns using AWS services, running locally via [LocalStack](https://localstack.cloud/). Each project implements one or more patterns from *Designing Distributed Systems* by Brendan Burns, using Python, Terraform, and AWS SAM.
+A practical implementation of distributed systems design patterns using AWS services, running locally via [MiniStack](https://ministack.org/). Each project implements one or more patterns from *Designing Distributed Systems* by Brendan Burns, using Python, Terraform, and AWS SAM.
 
 The goal is to build working, observable systems that demonstrate how classical distributed patterns translate into concrete AWS infrastructure — not toy examples, but systems with realistic failure handling, observability, and separation of concerns.
 
@@ -21,11 +21,11 @@ The goal is to build working, observable systems that demonstrate how classical 
 
 ## Architecture Overview
 
-All six projects share a common LocalStack environment and a set of reusable Terraform modules. Each project deliberately builds on the primitives introduced by the previous ones.
+All six projects share a common MiniStack environment and a set of reusable Terraform modules. Each project deliberately builds on the primitives introduced by the previous ones.
 
 ```
 +----------------------------------------------------------------------+
-|                       LocalStack (port 4566)                         |
+|                       MiniStack (port 4566)                          |
 |                                                                      |
 |  +----------+  +----------+  +----------+  +----------+             |
 |  |   ECS    |  |  Lambda  |  |   SQS    |  | DynamoDB |             |
@@ -47,11 +47,11 @@ All six projects share a common LocalStack environment and a set of reusable Ter
 
 | Tool | Purpose | Install |
 |---|---|---|
-| Docker + Docker Compose | LocalStack and ECS containers | [docs.docker.com](https://docs.docker.com/get-docker/) |
-| OpenTofu or Terraform >= 1.5 | Infrastructure as code | [opentofu.org](https://opentofu.org/docs/intro/install/) |
+| Docker + Docker Compose | MiniStack and ECS containers | [docs.docker.com](https://docs.docker.com/get-docker/) |
+| Terraform >= 1.5 | Infrastructure as code | [developer.hashicorp.com/terraform](https://developer.hashicorp.com/terraform/install) |
 | AWS SAM CLI | Lambda local testing | `pip install aws-sam-cli` |
 | Python >= 3.11 | Lambda handlers and tooling | [python.org](https://www.python.org/downloads/) |
-| awslocal | AWS CLI wrapper for LocalStack | `pip install awscli-local` |
+| AWS CLI | AWS API access | `pip install awscli` |
 
 ### NixOS / nix-direnv
 
@@ -61,29 +61,29 @@ A `shell.nix` and `.envrc` are provided for a reproducible development environme
 direnv allow  # run once after cloning
 ```
 
-This gives you Python, Docker, awslocal, and SAM CLI (via virtualenv). LocalStack credentials and `AWS_ENDPOINT_URL` are exported automatically via `.envrc`.
+This gives you Python, Docker, AWS CLI, and SAM CLI (via virtualenv). MiniStack credentials and `AWS_ENDPOINT_URL` are exported automatically via `.envrc`.
 
 ---
 
-## LocalStack Setup
+## MiniStack Setup
 
-All projects share a single LocalStack instance. Start it once before working on any project:
+All projects share a single MiniStack instance. Start it once before working on any project:
 
 ```bash
-cd localstack
+cd ministack
 docker compose up -d
 ```
 
 Verify it is running:
 
 ```bash
-awslocal s3 ls
+aws --endpoint-url=http://localhost:4566 s3 ls
 # Should return an empty list without error
 ```
 
-LocalStack exposes all AWS services on a single gateway: `http://localhost:4566`.
+MiniStack exposes all AWS services on a single gateway: `http://localhost:4566`.
 
-All Terraform projects redirect AWS API calls to LocalStack via the provider configuration:
+All Terraform projects redirect AWS API calls to MiniStack via the provider configuration:
 
 ```hcl
 provider "aws" {
@@ -116,9 +116,9 @@ SAM local invocations use the following environment variable block (see `env.jso
 }
 ```
 
-Note: SAM runs Lambda functions inside Docker containers — they cannot reach LocalStack via `localhost`. Use the following endpoint depending on your environment:
+Note: SAM runs Lambda functions inside Docker containers — they cannot reach MiniStack via `localhost`. Use the following endpoint depending on your environment:
 
-| Environment | SAM → LocalStack endpoint |
+| Environment | SAM → MiniStack endpoint |
 |---|---|
 | macOS | `http://host.docker.internal:4566` |
 | Windows (Docker Desktop) | `http://host.docker.internal:4566` |
@@ -127,10 +127,10 @@ Note: SAM runs Lambda functions inside Docker containers — they cannot reach L
 
 The `env.json` files in each SAM project use `host.docker.internal:4566` by default, which covers macOS, Windows, and WSL2 with Docker Desktop.
 
-### Stopping LocalStack
+### Stopping MiniStack
 
 ```bash
-cd localstack && docker compose down
+cd ministack && docker compose down
 ```
 
 State is ephemeral by default. This is intentional: if infrastructure cannot be recreated from code, it should not exist.
@@ -141,10 +141,10 @@ State is ephemeral by default. This is intentional: if infrastructure cannot be 
 
 ```
 distributed-patterns-aws/
-├── localstack/
-│   └── docker-compose.yml          # Shared LocalStack instance
+├── ministack/
+│   └── docker-compose.yml          # Shared MiniStack instance
 ├── terraform/
-│   ├── provider.tf                 # Reference LocalStack provider config
+│   ├── provider.tf                 # Reference MiniStack provider config
 │   ├── modules/                    # Reusable Terraform modules
 │   │   ├── sqs/                    # SQS queue + DLQ
 │   │   ├── dynamodb/               # DynamoDB table with optional TTL and GSI
@@ -218,27 +218,27 @@ flowchart TD
 
 ### What is built
 
-- A Python Flask API (`/health`, `/items` GET/POST) that writes structured JSON logs to a shared volume and stdout. Zero knowledge of Fluent Bit.
-- A Fluent Bit sidecar container that tails the log file from the shared volume and ships batches to a LocalStack S3 bucket.
+- A Python Flask API (`/health`, `/items` GET/POST) that writes structured JSON logs to a shared volume and stdout. Zero knowledge of the log shipper.
+- A Python log-shipper sidecar container that tails the log file from the shared volume and ships batches to an S3 bucket.
 - An ECS task definition with a shared `app-logs` volume. The sidecar is `essential: false` — if it crashes, the application continues.
-- A Docker Compose file for local development that replicates the ECS task structure against LocalStack.
+- A Docker Compose file for local development that replicates the ECS task structure against MiniStack.
 
 ### Key design decisions
 
 - Application logs only to stdout and a file. No SDK, no external dependency, no knowledge of the transport.
-- Structured JSON logs let Fluent Bit parse and enrich fields without regex.
+- Structured JSON logs allow the log shipper to parse and enrich fields without regex.
 - Sidecar is non-essential: log shipping failures must not impact application availability.
-- Fluent Bit S3 endpoint overridden via environment variable to point at LocalStack — no code changes between local and real AWS.
+- S3 endpoint overridden via environment variable — no code changes between local and real AWS.
 
 ### Running
 
 ```bash
-# 1. Start LocalStack
-cd localstack && docker compose up -d
+# 1. Start MiniStack
+cd ministack && docker compose up -d
 
 # 2. Provision S3 bucket and ECS resources
 cd terraform/projects/01-sidecar
-tofu init && tofu apply
+terraform init && terraform apply
 
 # 3. Run locally with Docker Compose
 cd docker/flask-api
@@ -252,7 +252,7 @@ curl -X POST http://localhost:5000/items \
   -d '{"name": "test-item"}'
 
 # 5. Verify logs have landed in S3
-awslocal s3 ls s3://sidecar-logs/ --recursive
+aws --endpoint-url=http://localhost:4566 s3 ls s3://sidecar-logs/ --recursive
 ```
 
 ---
@@ -312,14 +312,13 @@ flowchart TD
 
 ```bash
 cd terraform/projects/02-ambassador
-tofu init && tofu apply
+terraform init && terraform apply
 
-cd sam/02-ambassador
-sam local invoke ProducerFunction \
-  --event events/produce.json \
-  --env-vars env.json
+aws --endpoint-url=http://localhost:4566 lambda invoke \
+  --function-name producer \
+  --payload '{}' /tmp/out.json && cat /tmp/out.json
 
-awslocal sqs get-queue-attributes \
+aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
   --queue-url http://localhost:4566/000000000000/ambassador-queue \
   --attribute-names ApproximateNumberOfMessages
 ```
@@ -383,7 +382,7 @@ flowchart TD
 ```bash
 cd docker/flask-api && docker build -t flask-api:local .
 cd terraform/projects/03-load-balanced
-tofu init && tofu apply
+terraform init && terraform apply
 for i in $(seq 1 5); do curl http://localhost:8080/counter; done
 ```
 
@@ -466,13 +465,13 @@ flowchart TD
 
 ```bash
 cd terraform/projects/04-scatter-gather
-tofu init && tofu apply
+terraform init && terraform apply
 
-awslocal stepfunctions start-execution \
+aws --endpoint-url=http://localhost:4566 stepfunctions start-execution \
   --state-machine-arn arn:aws:states:eu-west-1:000000000000:stateMachine:scatter-gather \
   --input '{"query": "distributed systems"}'
 
-awslocal s3 ls s3://scatter-gather-results/ --recursive
+aws --endpoint-url=http://localhost:4566 s3 ls s3://scatter-gather-results/ --recursive
 ```
 
 ---
@@ -527,13 +526,13 @@ flowchart TD
 
 ```bash
 cd terraform/projects/05-event-pipeline
-tofu init && tofu apply
+terraform init && terraform apply
 
 curl -X POST http://localhost:4566/restapis/.../prod/ingest \
   -H "Content-Type: application/json" \
   -d '{"id": "item-001", "title": "Test Item", "source": "api"}'
 
-awslocal dynamodb scan --table-name pipeline-items
+aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name pipeline-items
 ```
 
 ---
@@ -586,7 +585,7 @@ flowchart TD
 
 ```bash
 cd terraform/projects/06-work-queue
-tofu init && tofu apply
+terraform init && terraform apply
 
 docker run --network ministack-net \
   -e AWS_ENDPOINT_URL=http://ministack:4566 \
@@ -595,11 +594,11 @@ docker run --network ministack-net \
   -e QUEUE_URL=http://ministack:4566/000000000000/work-queue \
   log-producer:local
 
-watch -n 2 "awslocal sqs get-queue-attributes \
+watch -n 2 "aws --endpoint-url=http://localhost:4566 sqs get-queue-attributes \
   --queue-url http://localhost:4566/000000000000/work-queue \
   --attribute-names ApproximateNumberOfMessages"
 
-awslocal dynamodb scan --table-name work-results
+aws --endpoint-url=http://localhost:4566 dynamodb scan --table-name work-results
 ```
 
 ---
@@ -608,9 +607,9 @@ awslocal dynamodb scan --table-name work-results
 
 ### Infrastructure
 
-- All Terraform projects include the LocalStack provider configuration inline — no shared remote backend required for local development.
-- `tofu init && tofu apply` is the single command to provision any project.
-- `tofu destroy` tears everything down cleanly.
+- All Terraform projects include the MiniStack provider configuration inline — no shared remote backend required for local development.
+- `terraform init && terraform apply` is the single command to provision any project.
+- `terraform destroy` tears everything down cleanly.
 - Modules in `terraform/modules/` are referenced via relative paths from each project root.
 
 ### Python
@@ -618,7 +617,7 @@ awslocal dynamodb scan --table-name work-results
 - All Lambda handlers use the signature `def handler(event: dict, context) -> dict`.
 - Structured JSON logging throughout — every entry includes `timestamp`, `level`, `function`, and contextual fields.
 - `boto3` clients instantiated at module level to reuse connections across warm invocations.
-- LocalStack endpoint injected via `AWS_ENDPOINT_URL` — no special casing in application code.
+- MiniStack endpoint injected via `AWS_ENDPOINT_URL` — no special casing in application code.
 
 ### SAM local testing
 
@@ -648,8 +647,8 @@ sam local invoke FunctionName \
 ## References
 
 - Burns, B. (2018). *Designing Distributed Systems*. O'Reilly Media.
-- [LocalStack documentation](https://docs.localstack.cloud/)
+- [MiniStack documentation](https://ministack.org/docs)
 - [AWS Step Functions developer guide](https://docs.aws.amazon.com/step-functions/latest/dg/welcome.html)
 - [AWS SQS developer guide](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html)
-- [OpenTofu documentation](https://opentofu.org/docs/)
+- [Terraform documentation](https://developer.hashicorp.com/terraform/docs)
 - [AWS SAM CLI documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
