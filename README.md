@@ -1,8 +1,8 @@
 # Distributed Systems Patterns on AWS
 
-A practical implementation of distributed systems design patterns using AWS services, running locally via [MiniStack](https://ministack.org/). Each project implements one or more patterns from *Designing Distributed Systems* by Brendan Burns, using Python, Terraform, and AWS SAM.
+A practical implementation of distributed systems design patterns using AWS services, running locally via [MiniStack](https://ministack.org/). Each project implements one or more patterns from *Designing Distributed Systems* by Brendan Burns, using Python and Terraform.
 
-The goal is to build working, observable systems that demonstrate how classical distributed patterns translate into concrete AWS infrastructure — not toy examples, but systems with realistic failure handling, observability, and separation of concerns.
+The goal is to build working, observable systems that demonstrate how classical distributed patterns translate into concrete AWS infrastructure.
 
 ---
 
@@ -23,51 +23,33 @@ The goal is to build working, observable systems that demonstrate how classical 
 
 All six projects share a common MiniStack environment and a set of reusable Terraform modules. Each project deliberately builds on the primitives introduced by the previous ones.
 
-```
-+----------------------------------------------------------------------+
-|                       MiniStack (port 4566)                          |
-|                                                                      |
-|  +----------+  +----------+  +----------+  +----------+             |
-|  |   ECS    |  |  Lambda  |  |   SQS    |  | DynamoDB |             |
-|  | 01, 03   |  |02,04,05,6|  |02,05,06  |  |04,05,06  |             |
-|  +----------+  +----------+  +----------+  +----------+             |
-|                                                                      |
-|  +----------+  +----------+  +----------+  +------------------+     |
-|  |   SNS    |  |    S3    |  |   SSM    |  |  Step Functions  |     |
-|  |   05     |  |01,04,05  |  |   02     |  |       04         |     |
-|  +----------+  +----------+  +----------+  +------------------+     |
-+----------------------------------------------------------------------+
-```
-
----
-
 ## Prerequisites
 
 ### Required tools
 
 | Tool | Purpose | Install |
 |---|---|---|
-| Docker + Docker Compose | MiniStack and ECS containers | [docs.docker.com](https://docs.docker.com/get-docker/) |
-| Terraform >= 1.5 | Infrastructure as code | [developer.hashicorp.com/terraform](https://developer.hashicorp.com/terraform/install) |
-| AWS SAM CLI | Lambda local testing | `pip install aws-sam-cli` |
-| Python >= 3.11 | Lambda handlers and tooling | [python.org](https://www.python.org/downloads/) |
-| AWS CLI | AWS API access | `pip install awscli` |
+| Docker + Docker Compose | MiniStack and ECS containers | via nix (see below) | 
+| Terraform >= 1.5 | Infrastructure as code | via nix (see below) |
+| AWS SAM CLI | Lambda local testing | via nix (see below) |
+| Python >= 3.11 | Lambda handlers and tooling | via nix (see below) | 
+| AWS CLI | AWS API access | via nix (see below ) | 
 
 ### NixOS / nix-direnv
 
-A `shell.nix` and `.envrc` are provided for a reproducible development environment. With `nix-direnv` configured, the environment activates automatically on `cd`:
+A `flake.nix` and `.envrc` are provided for a reproducible development environment. With `nix-direnv` configured, the environment activates automatically on `cd`:
 
 ```bash
 direnv allow  # run once after cloning
 ```
 
-This gives you Python, Docker, AWS CLI, and SAM CLI (via virtualenv). MiniStack credentials and `AWS_ENDPOINT_URL` are exported automatically via `.envrc`.
+This gives you Python, Docker, AWS CLI, and SAM CLI (via virtualenv) and MiniStack, which is started automatically on `cd`. MiniStack credentials and `AWS_ENDPOINT_URL` are exported automatically via `.envrc`.
 
 ---
 
 ## MiniStack Setup
 
-All projects share a single MiniStack instance. Start it once before working on any project:
+All projects share a single MiniStack instance. It is started automatically on `cd` (see above):
 
 ```bash
 cd ministack
@@ -78,7 +60,7 @@ Verify it is running:
 
 ```bash
 aws --endpoint-url=http://localhost:4566 s3 ls
-# Should return an empty list without error
+# Should return an empty list without error as nothing is deployed yet
 ```
 
 MiniStack exposes all AWS services on a single gateway: `http://localhost:4566`.
@@ -102,30 +84,6 @@ provider "aws" {
   }
 }
 ```
-
-SAM local invocations use the following environment variable block (see `env.json` in each SAM project):
-
-```json
-{
-  "FunctionName": {
-    "AWS_ENDPOINT_URL": "http://host.docker.internal:4566",
-    "AWS_ACCESS_KEY_ID": "test",
-    "AWS_SECRET_ACCESS_KEY": "test",
-    "AWS_DEFAULT_REGION": "eu-west-1"
-  }
-}
-```
-
-Note: SAM runs Lambda functions inside Docker containers — they cannot reach MiniStack via `localhost`. Use the following endpoint depending on your environment:
-
-| Environment | SAM → MiniStack endpoint |
-|---|---|
-| macOS | `http://host.docker.internal:4566` |
-| Windows (Docker Desktop) | `http://host.docker.internal:4566` |
-| WSL2 (Docker Desktop integration) | `http://host.docker.internal:4566` |
-| Linux (native Docker) | `http://172.17.0.1:4566` |
-
-The `env.json` files in each SAM project use `host.docker.internal:4566` by default, which covers macOS, Windows, and WSL2 with Docker Desktop.
 
 ### Stopping MiniStack
 
@@ -158,11 +116,6 @@ distributed-patterns-aws/
 │       ├── 04-scatter-gather/
 │       ├── 05-event-pipeline/
 │       └── 06-work-queue/
-├── sam/
-│   ├── 02-ambassador/
-│   ├── 04-scatter-gather/
-│   ├── 05-event-pipeline/
-│   └── 06-work-queue/
 ├── docker/
 │   ├── flask-api/                  # Main API container (Projects 01, 03)
 │   │   ├── app.py
