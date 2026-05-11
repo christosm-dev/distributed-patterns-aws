@@ -494,11 +494,11 @@ ECS Producer ──► SQS Queue ──► Lambda Worker 1 ──+
 cd terraform/projects/06-work-queue
 tofu init && tofu apply
 
-docker run --network localstack-net \
-  -e AWS_ENDPOINT_URL=http://localstack:4566 \
+docker run --network ministack-net \
+  -e AWS_ENDPOINT_URL=http://ministack:4566 \
   -e AWS_ACCESS_KEY_ID=test \
   -e AWS_SECRET_ACCESS_KEY=test \
-  -e QUEUE_URL=http://localstack:4566/000000000000/work-queue \
+  -e QUEUE_URL=http://ministack:4566/000000000000/work-queue \
   log-producer:local
 
 watch -n 2 "awslocal sqs get-queue-attributes \

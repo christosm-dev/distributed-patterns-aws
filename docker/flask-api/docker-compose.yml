@@ -1,14 +1,14 @@
 version: "3.8"
 
 # Local development compose for Project 01 — Sidecar Pattern.
-# Runs the Flask API and Fluent Bit sidecar together, wired to the
-# shared LocalStack instance on the localstack-net network.
+# Runs the Flask API and log-shipper sidecar together, wired to the
+# shared MiniStack instance on the ministack-net network.
 #
 # Usage:
 #   docker compose up --build
 #
 # Prerequisites:
-#   LocalStack must be running: cd ../../localstack && docker compose up -d
+#   MiniStack must be running: cd ../../ministack && docker compose up -d
 
 services:
   flask-api:
@@ -22,14 +22,14 @@ services:
       - LOG_DIR=/var/log/app
       - LOG_LEVEL=INFO
       - DYNAMODB_TABLE=load-balanced-counters
-      - DYNAMODB_ENDPOINT_URL=http://localstack:4566
+      - DYNAMODB_ENDPOINT_URL=http://ministack:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=eu-west-1
     volumes:
       - app-logs:/var/log/app
     networks:
-      - localstack-net
+      - ministack-net
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 10s
@@ -46,7 +46,7 @@ services:
         condition: service_healthy
     environment:
       - S3_BUCKET=sidecar-logs
-      - S3_ENDPOINT_URL=http://localstack:4566
+      - S3_ENDPOINT_URL=http://ministack:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_REGION=eu-west-1
@@ -54,12 +54,12 @@ services:
     volumes:
       - app-logs:/var/log/app:ro
     networks:
-      - localstack-net
+      - ministack-net
 
 volumes:
   app-logs:
 
 networks:
-  localstack-net:
+  ministack-net:
     external: true
-    name: localstack-net
+    name: ministack-net

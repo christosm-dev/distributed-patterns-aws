@@ -123,7 +123,7 @@ module "ambassador_lambda" {
 
   environment_variables = {
     QUEUE_URL_PARAM  = aws_ssm_parameter.queue_url.name
-    AWS_ENDPOINT_URL = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL = "http://ministack:4566"
   }
 }
 
@@ -137,7 +137,7 @@ module "producer_lambda" {
 
   environment_variables = {
     AMBASSADOR_FUNCTION = module.ambassador_lambda.function_name
-    AWS_ENDPOINT_URL    = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL    = "http://ministack:4566"
   }
 }
 
@@ -150,7 +150,7 @@ module "consumer_lambda" {
   tags       = local.tags
 
   environment_variables = {
-    AWS_ENDPOINT_URL = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL = "http://ministack:4566"
   }
 }
 

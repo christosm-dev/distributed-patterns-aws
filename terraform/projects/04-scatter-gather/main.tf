@@ -186,7 +186,7 @@ module "source_a_lambda" {
   environment_variables = {
     SOURCE_NAME      = "A"
     TABLE_NAME       = module.table_a.table_name
-    AWS_ENDPOINT_URL = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL = "http://ministack:4566"
   }
 }
 
@@ -201,7 +201,7 @@ module "source_b_lambda" {
   environment_variables = {
     SOURCE_NAME      = "B"
     TABLE_NAME       = module.table_b.table_name
-    AWS_ENDPOINT_URL = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL = "http://ministack:4566"
   }
 }
 
@@ -216,7 +216,7 @@ module "source_c_lambda" {
   environment_variables = {
     SOURCE_NAME      = "C"
     TABLE_NAME       = module.table_c.table_name
-    AWS_ENDPOINT_URL = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL = "http://ministack:4566"
   }
 }
 
@@ -230,7 +230,7 @@ module "aggregator_lambda" {
 
   environment_variables = {
     S3_BUCKET        = module.results_bucket.bucket_name
-    AWS_ENDPOINT_URL = "http://172.18.0.2:4566"
+    AWS_ENDPOINT_URL = "http://ministack:4566"
   }
 }
 

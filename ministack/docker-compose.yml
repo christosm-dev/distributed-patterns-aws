@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  ministack:
+    image: ministackorg/ministack:latest
+    container_name: ministack
+    ports:
+      - "4566:4566"
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LAMBDA_EXECUTOR=docker
+      - LAMBDA_DOCKER_NETWORK=ministack-net
+      - AWS_DEFAULT_REGION=eu-west-1
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - ministack-data:/var/lib/ministack
+    networks:
+      - ministack-net
+
+networks:
+  ministack-net:
+    name: ministack-net
+
+volumes:
+  ministack-data:
