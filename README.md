@@ -203,6 +203,19 @@ The invariant is that the main application container remains unchanged regardles
 +------------------------------------------+
 ```
 
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    Client([HTTP Client]) -->|GET /items\nPOST /items| Flask[Flask API]
+    Flask -->|JSON log line| Vol[/Shared Volume\n/var/log/app/app.log/]
+    Flask -->|HTTP response| Client
+
+    LogShipper[Log Shipper\nsidecar] -->|tail new lines| Vol
+    LogShipper -->|buffer lines| Buf[(in-memory buffer)]
+    Buf -->|every 30 s — PutObject| S3[(S3: sidecar-logs)]
+```
+
 ### What is built
 
 - A Python Flask API (`/health`, `/items` GET/POST) that writes structured JSON logs to a shared volume and stdout. Zero knowledge of Fluent Bit.
@@ -266,6 +279,21 @@ The producer has no direct dependency on SQS. Swapping the transport layer requi
                                                    +--------------+
 ```
 
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    Trigger([invoke producer]) --> Producer[Lambda: producer\nbuild payload]
+    Producer -->|Lambda.Invoke sync| Ambassador[Lambda: ambassador]
+    Ambassador -->|GetParameter| SSM[(SSM Parameter Store\nqueue URL)]
+    Ambassador -->|SQS.SendMessage| Queue[(SQS: ambassador-queue)]
+    Ambassador -->|retry w/ exp. backoff\non transient failure| Ambassador
+    Queue -->|event source mapping| Consumer[Lambda: consumer\nprocess + log]
+    Consumer --> Done([done])
+    Queue -->|maxReceiveCount exceeded| DLQ[(DLQ)]
+    DLQ -->|depth > 0| Alarm[CloudWatch Alarm]
+```
+
 ### What is built
 
 - Producer Lambda: generates a message payload and invokes the ambassador synchronously.
@@ -321,6 +349,20 @@ Multiple identical, stateless replicas of a service run behind a load balancer. 
                       +----------+
                       | DynamoDB |  shared state
                       +----------+
+```
+
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    Client([HTTP Client]) -->|POST /counter| ALB[Application Load Balancer\n:8080]
+    ALB -->|round-robin| R1[Flask Replica 1]
+    ALB -->|round-robin| R2[Flask Replica 2]
+    ALB -->|round-robin| R3[Flask Replica 3]
+    R1 & R2 & R3 -->|ADD atomic increment| DDB[(DynamoDB\nload-balanced-counters)]
+    DDB -->|updated value| R1 & R2 & R3
+    CW[CloudWatch\nCPU metric] -->|> 60% target| AS[Auto Scaling\n2–10 replicas]
+    AS -->|scale out / in| R1 & R2 & R3
 ```
 
 ### What is built
@@ -383,6 +425,30 @@ Total latency is determined by the slowest leaf. Timeout handling and partial re
                    +---------+
 ```
 
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    Client([start-execution\n{query}]) --> Parallel
+
+    subgraph Parallel State [Parallel — scatter]
+        SA[Lambda: scatter-source-a\nScan DynamoDB table-a]
+        SB[Lambda: scatter-source-b\nScan DynamoDB table-b]
+        SC[Lambda: scatter-source-c\nScan DynamoDB table-c]
+    end
+
+    Parallel --> SA & SB & SC
+    SA -->|success or Catch stub| Merge[parallel_results array]
+    SB -->|success or Catch stub| Merge
+    SC -->|success or Catch stub| Merge
+
+    Merge --> Agg[Lambda: scatter-aggregator\nfilter successes + merge]
+    Agg -->|PutObject| S3[(S3: scatter-gather-results)]
+    Agg --> Choice{success_count == 0?}
+    Choice -->|yes| Fail([SearchFailed])
+    Choice -->|no| Succeed([SearchSucceeded])
+```
+
 ### What is built
 
 - Step Functions standard workflow with a `Parallel` state fanning out to three Lambda functions, each querying a different DynamoDB table.
@@ -426,6 +492,21 @@ API Gateway ──► Lambda     ──► SNS Topic ──► SQS Queue A ─�
                (ingest)                 +──► SQS Queue B ──► Lambda (notify)
                                                                    |
                                                              DynamoDB + S3
+```
+
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    Client([HTTP Client]) -->|POST /ingest| APIGW[API Gateway]
+    APIGW --> Ingest[Lambda: ingest\nvalidate + publish]
+    Ingest -->|Publish| SNS[(SNS Topic)]
+    SNS -->|fan-out| QA[(SQS: processing)]
+    SNS -->|fan-out| QB[(SQS: notification)]
+    QA -->|trigger| Process[Lambda: process\ndeduplicate + score]
+    QB -->|trigger| Notify[Lambda: notify\nwrite summary]
+    Process -->|dedup check + PutItem| DDB[(DynamoDB\npipeline-items TTL + GSI)]
+    Notify -->|PutObject| S3[(S3: results)]
 ```
 
 ### What is built
@@ -472,6 +553,19 @@ ECS Producer ──► SQS Queue ──► Lambda Worker 1 ──+
                            +──► Lambda Worker 2 ──+──► Adapter Lambda ──► DynamoDB
                            +──► Lambda Worker 3 ──+         |
                                                        CloudWatch Metrics
+```
+
+### Activity Diagram
+
+```mermaid
+flowchart TD
+    Producer[ECS Producer\nbatch of 10 items] -->|SendMessageBatch| Queue[(SQS: work-queue)]
+    Queue -->|trigger| W1[Lambda Worker 1]
+    Queue -->|trigger| W2[Lambda Worker 2]
+    Queue -->|trigger| W3[Lambda Worker 3]
+    W1 & W2 & W3 -->|heterogeneous output| Adapter[Lambda: Adapter\nnormalise schema]
+    Adapter -->|PutItem| DDB[(DynamoDB\nwork-results GSI by worker)]
+    Adapter -->|PutMetricData| CW[CloudWatch\nthroughput + error metrics]
 ```
 
 ### What is built
