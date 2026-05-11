@@ -1,6 +1,6 @@
 import requests
 
-from conftest import FLASK_BASE_URL, FLASK_DIRECT_URL, TABLE_NAME, wait_for
+from conftest import FLASK_BASE_URL
 
 
 def test_alb_health_check():
