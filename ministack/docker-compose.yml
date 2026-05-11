@@ -10,6 +10,7 @@ services:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - LAMBDA_EXECUTOR=docker
       - LAMBDA_DOCKER_NETWORK=ministack-net
+      - DOCKER_NETWORK=ministack-net
       - AWS_DEFAULT_REGION=eu-west-1
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
