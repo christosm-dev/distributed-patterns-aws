@@ -28,8 +28,7 @@
         ];
 
         shellHook = ''
-          echo "Starting MiniStack..."
-          docker compose -f "${toString ./.}/ministack/docker-compose.yml" up -d --wait
+          echo "distributed-patterns-aws dev shell — run 'cd ministack && docker compose up -d' to start ministack" 
         '';
       };
     };
