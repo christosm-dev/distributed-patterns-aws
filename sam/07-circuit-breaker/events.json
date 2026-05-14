@@ -1,0 +1,26 @@
+{
+  "get_profile": {
+    "path": "/profile/user-001",
+    "httpMethod": "GET",
+    "pathParameters": {
+      "user_id": "user-001"
+    },
+    "headers": {
+      "Accept": "application/json"
+    }
+  },
+  "health": {
+    "path": "/health",
+    "httpMethod": "GET",
+    "pathParameters": null,
+    "headers": {}
+  },
+  "get_user_downstream": {
+    "path": "/users/user-001",
+    "httpMethod": "GET",
+    "pathParameters": {
+      "user_id": "user-001"
+    },
+    "headers": {}
+  }
+}

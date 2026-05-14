@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  Project 07 — Circuit Breaker pattern.
+  An API Lambda calls a downstream Lambda via a circuit breaker.
+  The downstream Lambda has a configurable failure rate to simulate
+  outages and allow observation of circuit state transitions.
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 10
+    Environment:
+      Variables:
+        AWS_ENDPOINT_URL: http://host.docker.internal:4566
+        AWS_ACCESS_KEY_ID: test
+        AWS_SECRET_ACCESS_KEY: test
+        AWS_DEFAULT_REGION: eu-west-1
+
+Resources:
+
+  # ── Downstream (flaky) service ───────────────────────────────────────────────
+
+  DownstreamFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: downstream-service
+      CodeUri: downstream/
+      Handler: handler.handler
+      Description: Simulates a flaky downstream service with configurable failure rate
+      Environment:
+        Variables:
+          # Set to 0.0 for healthy, 1.0 for complete outage
+          # Intermediate values (e.g. 0.6) simulate intermittent failures
+          FAILURE_RATE: "0.0"
+      Events:
+        GetUser:
+          Type: Api
+          Properties:
+            Path: /users/{user_id}
+            Method: GET
+        Health:
+          Type: Api
+          Properties:
+            Path: /downstream/health
+            Method: GET
+
+  # ── API service (wraps downstream with circuit breaker) ──────────────────────
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: api-service
+      CodeUri: api/
+      Handler: handler.handler
+      Description: API Lambda that calls downstream via a circuit breaker
+      Environment:
+        Variables:
+          # Points at the downstream Lambda via SAM local
+          DOWNSTREAM_URL: http://host.docker.internal:3001
+      Events:
+        GetProfile:
+          Type: Api
+          Properties:
+            Path: /profile/{user_id}
+            Method: GET
+        Health:
+          Type: Api
+          Properties:
+            Path: /health
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL for the API service
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
